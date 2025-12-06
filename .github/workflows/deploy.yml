@@ -12,6 +12,10 @@ on:
       - develop
       - staging
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
   AWS_REGION: ap-southeast-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
