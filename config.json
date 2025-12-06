@@ -1,0 +1,92 @@
+{
+  "dev": {
+    "cluster_name": "keycloak-cluster-dev",
+    "lb_name": "keycloak-lb-dev",
+    "keycloak": {
+      "desired_count": 1,
+      "cpu": 256,
+      "memory": 512,
+      "max_capacity": 2,
+      "min_capacity": 1,
+      "cpu_target": 70,
+      "memory_target": 80,
+      "health_check_path": "/health/ready",
+      "log_retention_days": 7
+    },
+    "chatbot_frontend": {
+      "desired_count": 1,
+      "cpu": 256,
+      "memory": 512,
+      "max_capacity": 2,
+      "min_capacity": 1,
+      "cpu_target": 70,
+      "memory_target": 80,
+      "health_check_path": "/",
+      "log_retention_days": 7
+    },
+    "vpc": {
+      "max_azs": 2,
+      "cidr": "10.0.0.0/16"
+    }
+  },
+  "stag": {
+    "cluster_name": "keycloak-cluster-stag",
+    "lb_name": "keycloak-lb-stag",
+    "keycloak": {
+      "desired_count": 2,
+      "cpu": 512,
+      "memory": 1024,
+      "max_capacity": 4,
+      "min_capacity": 2,
+      "cpu_target": 70,
+      "memory_target": 80,
+      "health_check_path": "/health/ready",
+      "log_retention_days": 14
+    },
+    "chatbot_frontend": {
+      "desired_count": 2,
+      "cpu": 256,
+      "memory": 512,
+      "max_capacity": 4,
+      "min_capacity": 2,
+      "cpu_target": 70,
+      "memory_target": 80,
+      "health_check_path": "/",
+      "log_retention_days": 14
+    },
+    "vpc": {
+      "max_azs": 3,
+      "cidr": "10.1.0.0/16"
+    }
+  },
+  "prod": {
+    "cluster_name": "keycloak-cluster-prod",
+    "lb_name": "keycloak-lb-prod",
+    "keycloak": {
+      "desired_count": 3,
+      "cpu": 512,
+      "memory": 1024,
+      "max_capacity": 6,
+      "min_capacity": 3,
+      "cpu_target": 60,
+      "memory_target": 70,
+      "health_check_path": "/health/ready",
+      "log_retention_days": 30
+    },
+    "chatbot_frontend": {
+      "desired_count": 3,
+      "cpu": 512,
+      "memory": 1024,
+      "max_capacity": 6,
+      "min_capacity": 3,
+      "cpu_target": 60,
+      "memory_target": 70,
+      "health_check_path": "/",
+      "log_retention_days": 30
+    },
+    "vpc": {
+      "max_azs": 3,
+      "cidr": "10.2.0.0/16"
+    }
+  }
+}

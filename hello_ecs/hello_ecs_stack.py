@@ -13,14 +13,51 @@ import aws_cdk.aws_cloudwatch as cloudwatch
 
 class DemoEcsStack(cdk.Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, taskdef_path: str = None, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, taskdef_path: str = None, chatbot_frontend_taskdef_path: str = None, environment: str = "dev", config: dict = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # Use provided config or defaults
+        if config is None:
+            config = {
+                "cluster_name": "keycloak_cluster",
+                "lb_name": "keycloak-lb",
+                "keycloak": {
+                    "desired_count": 1,
+                    "cpu": 256,
+                    "memory": 512,
+                    "max_capacity": 3,
+                    "min_capacity": 1,
+                    "cpu_target": 70,
+                    "memory_target": 80,
+                    "health_check_path": "/health/ready",
+                    "log_retention_days": 7
+                },
+                "chatbot_frontend": {
+                    "desired_count": 1,
+                    "cpu": 256,
+                    "memory": 512,
+                    "max_capacity": 3,
+                    "min_capacity": 1,
+                    "cpu_target": 70,
+                    "memory_target": 80,
+                    "health_check_path": "/",
+                    "log_retention_days": 7
+                },
+                "vpc": {
+                    "max_azs": 2,
+                    "cidr": "10.0.0.0/16"
+                }
+            }
+
+        keycloak_config = config.get("keycloak", {})
+        chatbot_config = config.get("chatbot_frontend", {})
+        vpc_config = config.get("vpc", {})
+
         # Create VPC
-        vpc = ec2.Vpc(self, "Vpc", max_azs=2)
+        vpc = ec2.Vpc(self, "Vpc", max_azs=vpc_config.get("max_azs", 2), cidr=vpc_config.get("cidr", "10.0.0.0/16"))
 
         # Create Cluster
-        cluster = ecs.Cluster(self, "Cluster", vpc=vpc, cluster_name="keycloak_cluster")
+        cluster = ecs.Cluster(self, "Cluster", vpc=vpc, cluster_name=config.get("cluster_name", "keycloak_cluster"))
 
         # Create execution role for Fargate tasks
         execution_role = iam.Role(self, "ExecutionRole",
@@ -31,9 +68,19 @@ class DemoEcsStack(cdk.Stack):
         )
 
         # Create CloudWatch Log Group for container logs
+        retention_days = keycloak_config.get("log_retention_days", 7)
+        retention_map = {
+            7: logs.RetentionDays.ONE_WEEK,
+            14: logs.RetentionDays.TWO_WEEKS,
+            30: logs.RetentionDays.ONE_MONTH,
+            60: logs.RetentionDays.TWO_MONTHS,
+            90: logs.RetentionDays.THREE_MONTHS,
+        }
+        retention = retention_map.get(retention_days, logs.RetentionDays.ONE_WEEK)
+        
         log_group = logs.LogGroup(self, "EcsLogGroup",
-            log_group_name="/ecs/keycloak",
-            retention=logs.RetentionDays.ONE_WEEK,
+            log_group_name=f"/ecs/keycloak-{environment}",
+            retention=retention,
             removal_policy=cdk.RemovalPolicy.DESTROY
         )
 
@@ -83,33 +130,33 @@ class DemoEcsStack(cdk.Stack):
         service = ecs.FargateService(self, "Service",
             cluster=cluster,
             task_definition=task_definition,
-            desired_count=1,
+            desired_count=keycloak_config.get("desired_count", 1),
         )
 
         # Add Auto Scaling for the service
         scaling = service.auto_scale_task_count(
-            min_capacity=1,
-            max_capacity=3,
+            min_capacity=keycloak_config.get("min_capacity", 1),
+            max_capacity=keycloak_config.get("max_capacity", 3),
         )
 
         # Scale on CPU utilization
         scaling.scale_on_cpu_utilization("CpuScaling",
-            target_utilization_percent=60,
+            target_utilization_percent=keycloak_config.get("cpu_target", 70),
         )
 
         # Scale on memory utilization
         scaling.scale_on_memory_utilization("MemoryScaling",
-            target_utilization_percent=50,
+            target_utilization_percent=keycloak_config.get("memory_target", 80),
         )
 
         # Add Application Load Balancer
-        lb = elbv2.ApplicationLoadBalancer(self, "LB", vpc=vpc, internet_facing=True, load_balancer_name="keycloak-lb")
+        lb = elbv2.ApplicationLoadBalancer(self, "LB", vpc=vpc, internet_facing=True, load_balancer_name=config.get("lb_name", "keycloak-lb"))
         listener = lb.add_listener("Listener", port=80)
         target_group = listener.add_targets("Target",
             port=80,
             targets=[service],
             health_check=elbv2.HealthCheck(
-                path="/health/ready",  # Custom health check path
+                path=keycloak_config.get("health_check_path", "/health/ready"),
                 interval=cdk.Duration.seconds(30),
                 timeout=cdk.Duration.seconds(5),
                 healthy_threshold_count=2,
@@ -121,21 +168,21 @@ class DemoEcsStack(cdk.Stack):
         # CPU Utilization Alarm
         cpu_alarm = cloudwatch.Alarm(self, "CpuAlarm",
             metric=service.metric_cpu_utilization(),
-            threshold=60,
+            threshold=keycloak_config.get("cpu_target", 70),
             evaluation_periods=2,
             datapoints_to_alarm=2,
-            alarm_description="Alert when CPU utilization reaches 70% (triggers scaling)",
-            alarm_name="keycloak-cpu-alarm"
+            alarm_description="Alert when CPU utilization reaches threshold",
+            alarm_name=f"keycloak-cpu-alarm-{environment}"
         )
 
         # Memory Utilization Alarm
         memory_alarm = cloudwatch.Alarm(self, "MemoryAlarm",
             metric=service.metric_memory_utilization(),
-            threshold=50,
+            threshold=keycloak_config.get("memory_target", 80),
             evaluation_periods=2,
             datapoints_to_alarm=2,
-            alarm_description="Alert when Memory utilization reaches 80% (triggers scaling)",
-            alarm_name="keycloak-memory-alarm"
+            alarm_description="Alert when Memory utilization reaches threshold",
+            alarm_name=f"keycloak-memory-alarm-{environment}"
         )
 
         # Unhealthy Target Count Alarm (from target group)
@@ -145,32 +192,31 @@ class DemoEcsStack(cdk.Stack):
             evaluation_periods=1,
             comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
             alarm_description="Alert when there are unhealthy targets",
-            alarm_name="keycloak-unhealthy-targets-alarm"
+            alarm_name=f"keycloak-unhealthy-targets-alarm-{environment}"
         )
 
         cdk.CfnOutput(self, "LoadBalancerDNS", value=lb.load_balancer_dns_name)
 
         # ===== CHATBOT FRONTEND SERVICE =====
         # Create CloudWatch Log Group for chatbot-frontend
+        chatbot_retention_days = chatbot_config.get("log_retention_days", 7)
+        chatbot_retention = retention_map.get(chatbot_retention_days, logs.RetentionDays.ONE_WEEK)
+        
         chatbot_frontend_log_group = logs.LogGroup(self, "ChatbotFrontendLogGroup",
-            log_group_name="/ecs/chatbot-frontend",
-            retention=logs.RetentionDays.ONE_WEEK,
+            log_group_name=f"/ecs/chatbot-frontend-{environment}",
+            retention=chatbot_retention,
             removal_policy=cdk.RemovalPolicy.DESTROY
         )
 
-        # Load chatbot-frontend task definition from JSON - look in parent directory of hello-ecs
-        chatbot_frontend_taskdef_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "chatbot-frontend.json")
-        print(f"DEBUG: Looking for chatbot-frontend.json at: {chatbot_frontend_taskdef_path}")
-        print(f"DEBUG: File exists: {os.path.exists(chatbot_frontend_taskdef_path)}")
-        
-        if os.path.exists(chatbot_frontend_taskdef_path):
+        # Load chatbot-frontend task definition from JSON
+        if chatbot_frontend_taskdef_path and os.path.exists(chatbot_frontend_taskdef_path):
             with open(chatbot_frontend_taskdef_path, 'r') as f:
                 chatbot_frontend_json = json.load(f)
             
             # Create Fargate task definition for chatbot-frontend
             chatbot_frontend_taskdef = ecs.FargateTaskDefinition(self, "ChatbotFrontendTaskDef",
-                memory_limit_mib=int(chatbot_frontend_json.get('memory', 512)),
-                cpu=int(chatbot_frontend_json.get('cpu', 256)),
+                memory_limit_mib=chatbot_config.get("memory", 512),
+                cpu=chatbot_config.get("cpu", 256),
                 execution_role=execution_role,
             )
             
@@ -197,22 +243,22 @@ class DemoEcsStack(cdk.Stack):
             chatbot_frontend_service = ecs.FargateService(self, "ChatbotFrontendService",
                 cluster=cluster,
                 task_definition=chatbot_frontend_taskdef,
-                desired_count=1,
+                desired_count=chatbot_config.get("desired_count", 1),
                 service_name="chatbot-frontend"
             )
 
             # Add Auto Scaling for chatbot-frontend
             chatbot_frontend_scaling = chatbot_frontend_service.auto_scale_task_count(
-                min_capacity=1,
-                max_capacity=3,
+                min_capacity=chatbot_config.get("min_capacity", 1),
+                max_capacity=chatbot_config.get("max_capacity", 3),
             )
 
             chatbot_frontend_scaling.scale_on_cpu_utilization("ChatbotFrontendCpuScaling",
-                target_utilization_percent=70,
+                target_utilization_percent=chatbot_config.get("cpu_target", 70),
             )
 
             chatbot_frontend_scaling.scale_on_memory_utilization("ChatbotFrontendMemoryScaling",
-                target_utilization_percent=80,
+                target_utilization_percent=chatbot_config.get("memory_target", 80),
             )
 
             # Create target group for chatbot-frontend
@@ -224,7 +270,7 @@ class DemoEcsStack(cdk.Stack):
                 target_type=elbv2.TargetType.IP,
                 target_group_name="chatbot-frontend",
                 health_check=elbv2.HealthCheck(
-                    path="/",
+                    path=chatbot_config.get("health_check_path", "/"),
                     protocol=elbv2.Protocol.HTTP,
                     port="3000",
                     healthy_threshold_count=2,
@@ -248,20 +294,20 @@ class DemoEcsStack(cdk.Stack):
             # CloudWatch Alarms for chatbot-frontend
             chatbot_cpu_alarm = cloudwatch.Alarm(self, "ChatbotCpuAlarm",
                 metric=chatbot_frontend_service.metric_cpu_utilization(),
-                threshold=70,
+                threshold=chatbot_config.get("cpu_target", 70),
                 evaluation_periods=2,
                 datapoints_to_alarm=2,
-                alarm_description="Alert when chatbot-frontend CPU reaches 70%",
-                alarm_name="chatbot-frontend-cpu-alarm"
+                alarm_description="Alert when chatbot-frontend CPU reaches threshold",
+                alarm_name=f"chatbot-frontend-cpu-alarm-{environment}"
             )
 
             chatbot_memory_alarm = cloudwatch.Alarm(self, "ChatbotMemoryAlarm",
                 metric=chatbot_frontend_service.metric_memory_utilization(),
-                threshold=80,
+                threshold=chatbot_config.get("memory_target", 80),
                 evaluation_periods=2,
                 datapoints_to_alarm=2,
-                alarm_description="Alert when chatbot-frontend memory reaches 80%",
-                alarm_name="chatbot-frontend-memory-alarm"
+                alarm_description="Alert when chatbot-frontend memory reaches threshold",
+                alarm_name=f"chatbot-frontend-memory-alarm-{environment}"
             )
 
             chatbot_unhealthy_alarm = cloudwatch.Alarm(self, "ChatbotUnhealthyTargetsAlarm",
@@ -270,7 +316,7 @@ class DemoEcsStack(cdk.Stack):
                 evaluation_periods=1,
                 comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
                 alarm_description="Alert when chatbot-frontend has unhealthy targets",
-                alarm_name="chatbot-frontend-unhealthy-targets-alarm"
+                alarm_name=f"chatbot-frontend-unhealthy-targets-alarm-{environment}"
             )
 
             cdk.CfnOutput(self, "ChatbotFrontendTargetGroupArn", value=chatbot_frontend_target_group.target_group_arn)

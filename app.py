@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import os
+import json
+import sys
 
 import aws_cdk as cdk
 
@@ -8,26 +10,31 @@ from hello_ecs.hello_ecs_stack import DemoEcsStack
 
 app = cdk.App()
 
-# Path to your custom task definition JSON file
+# Get environment from context or default to 'dev'
+environment = app.node.try_get_context("environment") or "dev"
+
+# Load environment configuration
+config_file = os.path.join(os.path.dirname(__file__), "config.json")
+with open(config_file, 'r') as f:
+    config = json.load(f)
+
+if environment not in config:
+    raise ValueError(f"Environment '{environment}' not found in config.json. Available: {list(config.keys())}")
+
+env_config = config[environment]
+
+# Path to task definition JSON files
 taskdef_file = os.path.join(os.path.dirname(__file__), "taskdef.json")
+chatbot_frontend_taskdef_file = os.path.join(os.path.dirname(__file__), "chatbot-frontend.json")
 
-DemoEcsStack(app, "DemoEcsStack",
+# Create stack with environment-specific configuration
+DemoEcsStack(app, f"DemoEcsStack-{environment}",
     taskdef_path=taskdef_file,
-    # If you don't specify 'env', this stack will be environment-agnostic.
-    # Account/Region-dependent features and context lookups will not work,
-    # but a single synthesized template can be deployed anywhere.
-
-    # Uncomment the next line to specialize this stack for the AWS Account
-    # and Region that are implied by the current CLI configuration.
-
-    #env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
-
-    # Uncomment the next line if you know exactly what Account and Region you
-    # want to deploy the stack to. */
-
-    #env=cdk.Environment(account='123456789012', region='us-east-1'),
-
-    # For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html
-    )
+    chatbot_frontend_taskdef_path=chatbot_frontend_taskdef_file,
+    environment=environment,
+    config=env_config,
+    # Uncomment to specify AWS account/region:
+    # env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
+)
 
 app.synth()
