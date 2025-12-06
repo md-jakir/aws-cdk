@@ -66,7 +66,7 @@ jobs:
           cdk synth -c environment=${{ needs.determine-environment.outputs.environment }}
       
       - name: Upload CloudFormation template
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cdk-templates-${{ needs.determine-environment.outputs.environment }}
           path: ./cdk.out/
@@ -144,7 +144,7 @@ jobs:
           cat stack-outputs.json
       
       - name: Upload stack outputs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: stack-outputs-${{ needs.determine-environment.outputs.environment }}
           path: ./stack-outputs.json
