@@ -1,0 +1,51 @@
+{
+    "family": "chatbot-frontend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512",
+    "containerDefinitions": [
+        {
+            "name": "chatbot-frontend",
+            "image": "212945523191.dkr.ecr.ap-southeast-1.amazonaws.com/chatbot-frontend:latest",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "NEXT_PUBLIC_API_ENDPOINT",
+                    "value": "http://chatbot-backend:8000/api"
+                },
+                {
+                    "name": "NEXT_PUBLIC_BASE_URL",
+                    "value": "http://admin-dashboard:3000"
+                },
+                {
+                    "name": "NEXT_PUBLIC_SERVER_URL",
+                    "value": "http://chatbot-backend:8000"
+                },
+                {
+                    "name": "NEXTAUTH_SECRET",
+                    "value": ""
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/chatbot-frontend",
+                    "awslogs-region": "ap-southeast-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "cpu": 256,
+            "memory": 512
+        }
+    ]
+}
