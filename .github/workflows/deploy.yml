@@ -1,0 +1,191 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+  pull_request:
+    branches:
+      - main
+      - develop
+      - staging
+
+env:
+  AWS_REGION: ap-southeast-1
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+jobs:
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      should-deploy: ${{ steps.set-env.outputs.should-deploy }}
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=stag" >> $GITHUB_OUTPUT
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  validate:
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          npm install -g aws-cdk
+          pip install -r requirements.txt
+      
+      - name: Validate CDK
+        working-directory: ./hello-ecs
+        run: |
+          cdk synth -c environment=${{ needs.determine-environment.outputs.environment }}
+      
+      - name: Upload CloudFormation template
+        uses: actions/upload-artifact@v3
+        with:
+          name: cdk-templates-${{ needs.determine-environment.outputs.environment }}
+          path: ./hello-ecs/cdk.out/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      
+      - name: Run tests
+        working-directory: ./hello-ecs
+        run: |
+          pytest tests/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [determine-environment, validate, test]
+    if: needs.determine-environment.outputs.should-deploy == 'true' && github.event_name == 'push'
+    environment:
+      name: ${{ needs.determine-environment.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          npm install -g aws-cdk
+          pip install -r requirements.txt
+      
+      - name: Bootstrap CDK
+        working-directory: ./hello-ecs
+        run: |
+          cdk bootstrap aws://${{ env.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+      
+      - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+        working-directory: ./hello-ecs
+        run: |
+          cdk deploy \
+            -c environment=${{ needs.determine-environment.outputs.environment }} \
+            --require-approval never \
+            --progress events
+      
+      - name: Get stack outputs
+        id: outputs
+        working-directory: ./hello-ecs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name DemoEcsStack-${{ needs.determine-environment.outputs.environment }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            > stack-outputs.json
+          cat stack-outputs.json
+      
+      - name: Upload stack outputs
+        uses: actions/upload-artifact@v3
+        with:
+          name: stack-outputs-${{ needs.determine-environment.outputs.environment }}
+          path: ./hello-ecs/stack-outputs.json
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [determine-environment, deploy]
+    if: always()
+    steps:
+      - name: Deployment Status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment to ${{ needs.determine-environment.outputs.environment }} succeeded!"
+          else
+            echo "❌ Deployment to ${{ needs.determine-environment.outputs.environment }} failed!"
+            exit 1
+          fi
+      
+      - name: Send Slack notification (optional)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ CDK Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment Failed*\nEnvironment: ${{ needs.determine-environment.outputs.environment }}\nBranch: ${{ github.ref }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

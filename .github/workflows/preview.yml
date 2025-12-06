@@ -1,0 +1,60 @@
+name: Preview Deployment
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          npm install -g aws-cdk
+          pip install -r requirements.txt
+      
+      - name: Generate diff
+        working-directory: ./hello-ecs
+        run: |
+          cdk synth -c environment=dev > /tmp/new-template.json
+          echo "## CloudFormation Changes" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat /tmp/new-template.json | jq '.Resources | keys' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Comment PR with changes
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const template = JSON.parse(fs.readFileSync('./hello-ecs/cdk.out/DemoEcsStack-dev.json', 'utf8'));
+            const resources = Object.keys(template.Resources || {});
+            
+            const comment = `## 👀 CDK Preview
+            
+            **Resources to be created/modified:**
+            ${resources.map(r => `- ${r}`).join('\n')}
+            
+            Please review the changes before merging.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

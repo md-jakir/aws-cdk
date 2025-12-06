@@ -1,0 +1,89 @@
+name: Code Quality & Security
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+  pull_request:
+    branches:
+      - main
+      - develop
+      - staging
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          pip install -r requirements.txt
+          pip install pylint flake8 black
+      
+      - name: Run Black (code formatter)
+        working-directory: ./hello-ecs
+        run: black --check hello_ecs/
+        continue-on-error: true
+      
+      - name: Run Flake8
+        working-directory: ./hello-ecs
+        run: flake8 hello_ecs/
+        continue-on-error: true
+      
+      - name: Run Pylint
+        working-directory: ./hello-ecs
+        run: pylint hello_ecs/
+        continue-on-error: true
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        working-directory: ./hello-ecs
+        run: |
+          pip install bandit safety
+      
+      - name: Bandit Security Scan
+        working-directory: ./hello-ecs
+        run: bandit -r hello_ecs/
+        continue-on-error: true
+      
+      - name: Check for vulnerable dependencies
+        working-directory: ./hello-ecs
+        run: safety check
+        continue-on-error: true
+
+  validate-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Validate config.json
+        working-directory: ./hello-ecs
+        run: |
+          python3 -c "
+          import json
+          with open('config.json') as f:
+              config = json.load(f)
+          required_envs = ['dev', 'stag', 'prod']
+          for env in required_envs:
+              if env not in config:
+                  raise ValueError(f'Missing environment: {env}')
+          print('✅ Config validation passed')
+          "
