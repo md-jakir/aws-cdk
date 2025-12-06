@@ -57,13 +57,11 @@ jobs:
           python-version: '3.10'
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
         run: |
           npm install -g aws-cdk
           pip install -r requirements.txt
       
       - name: Validate CDK
-        working-directory: ./hello-ecs
         run: |
           cdk synth -c environment=${{ needs.determine-environment.outputs.environment }}
       
@@ -71,7 +69,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: cdk-templates-${{ needs.determine-environment.outputs.environment }}
-          path: ./hello-ecs/cdk.out/
+          path: ./cdk.out/
 
   test:
     runs-on: ubuntu-latest
@@ -85,13 +83,11 @@ jobs:
           python-version: '3.10'
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
         run: |
           pip install -r requirements.txt
           pip install pytest
       
       - name: Run tests
-        working-directory: ./hello-ecs
         run: |
           pytest tests/
 
@@ -127,12 +123,10 @@ jobs:
           pip install -r requirements.txt
       
       - name: Bootstrap CDK
-        working-directory: ./hello-ecs
         run: |
           cdk bootstrap aws://${{ env.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
       
       - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
-        working-directory: ./hello-ecs
         run: |
           cdk deploy \
             -c environment=${{ needs.determine-environment.outputs.environment }} \
@@ -141,7 +135,6 @@ jobs:
       
       - name: Get stack outputs
         id: outputs
-        working-directory: ./hello-ecs
         run: |
           aws cloudformation describe-stacks \
             --stack-name DemoEcsStack-${{ needs.determine-environment.outputs.environment }} \
@@ -154,7 +147,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: stack-outputs-${{ needs.determine-environment.outputs.environment }}
-          path: ./hello-ecs/stack-outputs.json
+          path: ./stack-outputs.json
 
   notify:
     runs-on: ubuntu-latest

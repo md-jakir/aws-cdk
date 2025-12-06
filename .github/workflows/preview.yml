@@ -23,13 +23,11 @@ jobs:
           python-version: '3.10'
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
         run: |
           npm install -g aws-cdk
           pip install -r requirements.txt
       
       - name: Generate diff
-        working-directory: ./hello-ecs
         shell: bash
         run: |
           set -e
@@ -44,7 +42,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const template = JSON.parse(fs.readFileSync('./hello-ecs/cdk.out/DemoEcsStack-dev.json', 'utf8'));
+            const template = JSON.parse(fs.readFileSync('./cdk.out/DemoEcsStack-dev.json', 'utf8'));
             const resources = Object.keys(template.Resources || {});
             
             const comment = `## 👀 CDK Preview
