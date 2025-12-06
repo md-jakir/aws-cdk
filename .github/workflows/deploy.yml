@@ -121,7 +121,6 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
         run: |
           npm install -g aws-cdk
           pip install -r requirements.txt
