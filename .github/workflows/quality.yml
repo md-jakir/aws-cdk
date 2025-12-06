@@ -24,24 +24,18 @@ jobs:
           python-version: '3.10'
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
-        run: |
-          pip install -r requirements.txt
-          pip install pylint flake8 black
+        run: pip install -r hello-ecs/requirements.txt pylint flake8 black
       
       - name: Run Black (code formatter)
-        working-directory: ./hello-ecs
-        run: black --check hello_ecs/
+        run: black --check hello-ecs/hello_ecs/
         continue-on-error: true
       
       - name: Run Flake8
-        working-directory: ./hello-ecs
-        run: flake8 hello_ecs/
+        run: flake8 hello-ecs/hello_ecs/
         continue-on-error: true
       
       - name: Run Pylint
-        working-directory: ./hello-ecs
-        run: pylint hello_ecs/
+        run: pylint hello-ecs/hello_ecs/
         continue-on-error: true
 
   security:
@@ -55,17 +49,13 @@ jobs:
           python-version: '3.10'
       
       - name: Install dependencies
-        working-directory: ./hello-ecs
-        run: |
-          pip install bandit safety
+        run: pip install bandit safety
       
       - name: Bandit Security Scan
-        working-directory: ./hello-ecs
-        run: bandit -r hello_ecs/
+        run: bandit -r hello-ecs/hello_ecs/
         continue-on-error: true
       
       - name: Check for vulnerable dependencies
-        working-directory: ./hello-ecs
         run: safety check
         continue-on-error: true
 
@@ -75,12 +65,11 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Validate config.json
-        working-directory: ./hello-ecs
         shell: bash
         run: |
           python3 -c "
           import json
-          with open('config.json') as f:
+          with open('hello-ecs/config.json') as f:
               config = json.load(f)
           required_envs = ['dev', 'stag', 'prod']
           for env in required_envs:
