@@ -3,11 +3,16 @@ import os
 
 import aws_cdk as cdk
 
-from hello_ecs.hello_ecs_stack import HelloEcsStack
+from hello_ecs.hello_ecs_stack import DemoEcsStack
 
 
 app = cdk.App()
-HelloEcsStack(app, "HelloEcsStack",
+
+# Path to your custom task definition JSON file
+taskdef_file = os.path.join(os.path.dirname(__file__), "taskdef.json")
+
+DemoEcsStack(app, "DemoEcsStack",
+    taskdef_path=taskdef_file,
     # If you don't specify 'env', this stack will be environment-agnostic.
     # Account/Region-dependent features and context lookups will not work,
     # but a single synthesized template can be deployed anywhere.
