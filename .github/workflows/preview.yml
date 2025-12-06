@@ -3,7 +3,7 @@ name: Preview Deployment
 on:
   pull_request:
     branches:
-      - main
+      - master
       - staging
 
 jobs:

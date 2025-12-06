@@ -3,12 +3,12 @@ name: Deploy to ECS
 on:
   push:
     branches:
-      - main
+      - master
       - develop
       - staging
   pull_request:
     branches:
-      - main
+      - master
       - develop
       - staging
 
