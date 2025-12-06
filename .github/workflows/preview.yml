@@ -30,7 +30,9 @@ jobs:
       
       - name: Generate diff
         working-directory: ./hello-ecs
+        shell: bash
         run: |
+          set -e
           cdk synth -c environment=dev > /tmp/new-template.json
           echo "## CloudFormation Changes" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY

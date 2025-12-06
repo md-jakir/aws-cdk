@@ -76,6 +76,7 @@ jobs:
       
       - name: Validate config.json
         working-directory: ./hello-ecs
+        shell: bash
         run: |
           python3 -c "
           import json
